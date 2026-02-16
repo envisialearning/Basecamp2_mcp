@@ -1,0 +1,14 @@
+{
+  "name": "basecamp2-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for the Basecamp 2 REST API",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "zod": "^3.24.2"
+  }
+}
