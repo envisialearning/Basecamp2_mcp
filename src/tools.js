@@ -22,12 +22,30 @@ export function registerTools(server, client) {
     async ({ name }) => {
       try {
         const data = await client.getAllPages('/projects.json');
-        let results = data.map(p => ({ id: p.id, name: p.name, description: p.description }));
+        let results = data.map(p => ({ id: p.id, name: p.name, description: p.description, updated_at: p.updated_at }));
         if (name) {
           const term = name.toLowerCase();
           results = results.filter(p => p.name.toLowerCase().includes(term));
         }
         return jsonResult(results);
+      } catch (e) {
+        return errorResult(e);
+      }
+    }
+  );
+
+  // ── archive_project ─────────────────────────────────────────────────
+  server.tool(
+    'archive_project',
+    'Archive or unarchive a Basecamp 2 project',
+    {
+      project_id: z.number().describe('The project ID'),
+      archived: z.boolean().describe('true to archive, false to unarchive'),
+    },
+    async ({ project_id, archived }) => {
+      try {
+        const data = await client.put(`/projects/${project_id}.json`, { archived });
+        return jsonResult(data);
       } catch (e) {
         return errorResult(e);
       }
