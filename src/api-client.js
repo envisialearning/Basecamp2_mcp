@@ -66,6 +66,7 @@ export class BasecampClient {
 
   async getAllPages(path, query = {}) {
     const results = [];
+    const seenIds = new Set();
     let page = 1;
 
     while (true) {
@@ -74,9 +75,19 @@ export class BasecampClient {
       const data = await this.get(`${path}${separator}${params}`);
 
       if (!Array.isArray(data) || data.length === 0) break;
-      results.push(...data);
 
-      // Basecamp 2 returns 50 per page by default; partial page means last page
+      // Stop if we're seeing duplicate results (some endpoints return all items on every page)
+      let newItems = 0;
+      for (const item of data) {
+        if (item.id && !seenIds.has(item.id)) {
+          seenIds.add(item.id);
+          results.push(item);
+          newItems++;
+        }
+      }
+      if (newItems === 0) break;
+
+      // Partial page means last page
       if (data.length < 50) break;
       page++;
     }

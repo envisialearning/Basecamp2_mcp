@@ -15,12 +15,19 @@ export function registerTools(server, client) {
   // ── list_projects ──────────────────────────────────────────────────
   server.tool(
     'list_projects',
-    'List all active Basecamp 2 projects',
-    {},
-    async () => {
+    'Search for active Basecamp 2 projects by name. Returns id, name, and description. Use a search term to filter — omit to list all.',
+    {
+      name: z.string().optional().describe('Case-insensitive search term to filter projects by name'),
+    },
+    async ({ name }) => {
       try {
         const data = await client.getAllPages('/projects.json');
-        return jsonResult(data);
+        let results = data.map(p => ({ id: p.id, name: p.name, description: p.description }));
+        if (name) {
+          const term = name.toLowerCase();
+          results = results.filter(p => p.name.toLowerCase().includes(term));
+        }
+        return jsonResult(results);
       } catch (e) {
         return errorResult(e);
       }
@@ -185,12 +192,13 @@ export function registerTools(server, client) {
   // ── list_people ────────────────────────────────────────────────────
   server.tool(
     'list_people',
-    'List all people visible to the current user',
+    'List all people visible to the current user. Returns id, name, and email.',
     {},
     async () => {
       try {
         const data = await client.getAllPages('/people.json');
-        return jsonResult(data);
+        const slim = data.map(p => ({ id: p.id, name: p.name, email: p.email_address }));
+        return jsonResult(slim);
       } catch (e) {
         return errorResult(e);
       }
