@@ -185,6 +185,50 @@ export function registerTools(server, client) {
     }
   );
 
+  // ── get_todo ────────────────────────────────────────────────────────
+  server.tool(
+    'get_todo',
+    'Get a specific todo item including its comments',
+    {
+      project_id: z.number().describe('The project ID'),
+      todo_id: z.number().describe('The todo ID'),
+    },
+    async ({ project_id, todo_id }) => {
+      try {
+        const data = await client.get(`/projects/${project_id}/todos/${todo_id}.json`);
+        return jsonResult(data);
+      } catch (e) {
+        return errorResult(e);
+      }
+    }
+  );
+
+  // ── create_comment ─────────────────────────────────────────────────
+  server.tool(
+    'create_comment',
+    'Create a comment on a todo or todo list',
+    {
+      project_id: z.number().describe('The project ID'),
+      type: z.enum(['todos', 'todolists']).describe('Whether to comment on a todo or todolist'),
+      resource_id: z.number().describe('The ID of the todo or todolist'),
+      content: z.string().describe('The comment text'),
+      subscribers: z.array(z.number()).optional().describe('Person IDs to notify about this comment'),
+    },
+    async ({ project_id, type, resource_id, content, subscribers }) => {
+      try {
+        const body = { content };
+        if (subscribers !== undefined) body.subscribers = subscribers;
+        const data = await client.post(
+          `/projects/${project_id}/${type}/${resource_id}/comments.json`,
+          body
+        );
+        return jsonResult(data);
+      } catch (e) {
+        return errorResult(e);
+      }
+    }
+  );
+
   // ── upload_attachment ──────────────────────────────────────────────
   server.tool(
     'upload_attachment',
