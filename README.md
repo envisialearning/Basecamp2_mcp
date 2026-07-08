@@ -78,7 +78,9 @@ Set the environment variables in your shell or `.env` file before starting Claud
 | `create_todolist` | Create a new todo list |
 | `create_todo` | Create a todo item (with optional assignee, due date, attachments) |
 | `update_todo` | Update a todo (content, assignee, due date, completion, position) |
-| `upload_attachment` | Upload a file and get an attachment token |
+| `get_todo` | Get a todo item including its comments |
+| `create_comment` | Comment on a todo or todo list (with optional attachments) |
+| `upload_attachment` | Upload a file and get an attachment token + name |
 | `list_people` | List all people visible to you |
 | `get_project_accesses` | List people with access to a project |
 

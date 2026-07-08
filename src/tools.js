@@ -1,6 +1,18 @@
 import { z } from 'zod';
 import { readFile } from 'node:fs/promises';
+import { basename } from 'node:path';
 import { formatError } from './errors.js';
+
+// BC2 attaches files by passing an array of { token, name } objects on the
+// created resource (todo, comment, message). The token comes from
+// upload_attachment; name must be a filename with an extension. See
+// https://github.com/basecamp/bcx-api/blob/master/sections/attachments.md
+const attachmentSchema = z.array(
+  z.object({
+    token: z.string().describe('Attachment token from upload_attachment'),
+    name: z.string().describe('Filename with extension, e.g. "screenshot.png"'),
+  })
+);
 
 function jsonResult(data) {
   return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
@@ -131,16 +143,16 @@ export function registerTools(server, client) {
       content: z.string().describe('The todo text'),
       assignee_id: z.number().optional().describe('Person ID to assign the todo to'),
       due_at: z.string().optional().describe('Due date in ISO 8601 format (YYYY-MM-DD)'),
-      attachment_tokens: z.array(z.string()).optional().describe('Attachment tokens from upload_attachment'),
+      attachments: attachmentSchema.optional().describe('Files to attach, as { token, name } objects (token from upload_attachment)'),
     },
-    async ({ project_id, todolist_id, content, assignee_id, due_at, attachment_tokens }) => {
+    async ({ project_id, todolist_id, content, assignee_id, due_at, attachments }) => {
       try {
         const body = { content };
         if (assignee_id !== undefined) {
           body.assignee = { id: assignee_id, type: 'Person' };
         }
         if (due_at !== undefined) body.due_at = due_at;
-        if (attachment_tokens !== undefined) body.attachment_tokens = attachment_tokens;
+        if (attachments !== undefined) body.attachments = attachments;
         const data = await client.post(
           `/projects/${project_id}/todolists/${todolist_id}/todos.json`,
           body
@@ -213,11 +225,13 @@ export function registerTools(server, client) {
       resource_id: z.number().describe('The ID of the todo or todolist'),
       content: z.string().describe('The comment text'),
       subscribers: z.array(z.number()).optional().describe('Person IDs to notify about this comment'),
+      attachments: attachmentSchema.optional().describe('Files to attach, as { token, name } objects (token from upload_attachment)'),
     },
-    async ({ project_id, type, resource_id, content, subscribers }) => {
+    async ({ project_id, type, resource_id, content, subscribers, attachments }) => {
       try {
         const body = { content };
         if (subscribers !== undefined) body.subscribers = subscribers;
+        if (attachments !== undefined) body.attachments = attachments;
         const data = await client.post(
           `/projects/${project_id}/${type}/${resource_id}/comments.json`,
           body
@@ -232,7 +246,7 @@ export function registerTools(server, client) {
   // ── upload_attachment ──────────────────────────────────────────────
   server.tool(
     'upload_attachment',
-    'Upload a file to Basecamp 2 and get an attachment token',
+    'Upload a file to Basecamp 2 and get an attachment token. Returns { token, name }; pass both (as one of the "attachments" entries) to create_todo or create_comment to actually attach the file.',
     {
       file_path: z.string().describe('Absolute path to the file to upload'),
       content_type: z.string().describe('MIME type of the file (e.g. image/png)'),
@@ -244,7 +258,9 @@ export function registerTools(server, client) {
           contentType: content_type,
           contentLength: fileData.length,
         });
-        return jsonResult(data);
+        // Echo back the filename so callers have the { token, name } pair the
+        // BC2 attachment API requires; the upload response itself is token-only.
+        return jsonResult({ ...data, name: basename(file_path) });
       } catch (e) {
         return errorResult(e);
       }

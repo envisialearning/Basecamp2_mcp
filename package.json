@@ -1,6 +1,6 @@
 {
   "name": "basecamp2-mcp",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "MCP server for the Basecamp 2 REST API",
   "type": "module",
   "main": "src/index.js",
