@@ -14,6 +14,42 @@ const attachmentSchema = z.array(
   })
 );
 
+// BC2 event `action` and `summary` can carry raw HTML — a renamed to-do comes
+// back as `changed a to-do from '<img alt="x" src="https://bcx-production-…'`.
+// `raw_excerpt` is already plain text; everything else needs stripping, or a
+// reader spends its attention on CDN URLs instead of on what happened.
+function stripHtml(value) {
+  if (typeof value !== 'string') return value;
+  return value
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// One event, flattened to what a reader (or an activity feed) actually needs.
+// `creator` is null on the per-person endpoint — it is implied by the path —
+// so callers there must attribute from the person they asked for, not this field.
+function normalizeEvent(e) {
+  return {
+    id: e.id,
+    created_at: e.created_at,
+    action: stripHtml(e.action),
+    summary: stripHtml(e.summary),
+    target: stripHtml(e.target),
+    excerpt: e.raw_excerpt ?? stripHtml(e.excerpt),
+    creator: e.creator ? { id: e.creator.id, name: e.creator.name } : null,
+    project: e.bucket ? { id: e.bucket.id, name: e.bucket.name } : null,
+    eventable: e.eventable ? { type: e.eventable.type, id: e.eventable.id } : null,
+    url: e.html_url ?? e.eventable?.app_url ?? null,
+  };
+}
+
 function jsonResult(data) {
   return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
 }
@@ -277,6 +313,56 @@ export function registerTools(server, client) {
         const data = await client.getAllPages('/people.json');
         const slim = data.map(p => ({ id: p.id, name: p.name, email: p.email_address }));
         return jsonResult(slim);
+      } catch (e) {
+        return errorResult(e);
+      }
+    }
+  );
+
+
+  // ── list_events ────────────────────────────────────────────────────
+  server.tool(
+    'list_events',
+    'Account-wide Basecamp 2 activity, newest first — who did what, when, in which project. This is the audit/activity feed; use list_person_events when you want one person.',
+    {
+      since: z.string().optional().describe('ISO8601 timestamp — only events after this. Strongly recommended; without it you get the most recent page only.'),
+      limit: z.number().optional().describe('Max events to return (default 50)'),
+      all_pages: z.boolean().optional().describe('Paginate the full range since `since` rather than the first page. Can be slow over a long window.'),
+      raw: z.boolean().optional().describe('Return Basecamp\'s untouched payload instead of the normalized shape'),
+    },
+    async ({ since, limit = 50, all_pages = false, raw = false }) => {
+      try {
+        const query = since ? `?since=${encodeURIComponent(since)}` : '';
+        const data = all_pages
+          ? await client.getAllPages('/events.json', since ? { since } : {})
+          : await client.get(`/events.json${query}`);
+        const rows = Array.isArray(data) ? data : [];
+        return jsonResult((raw ? rows : rows.map(normalizeEvent)).slice(0, limit));
+      } catch (e) {
+        return errorResult(e);
+      }
+    }
+  );
+
+  // ── list_person_events ─────────────────────────────────────────────
+  server.tool(
+    'list_person_events',
+    "One person's Basecamp 2 activity, newest first — what they commented on, changed, completed and created, with the project and a deep link. Get person_id from list_people. NOTE: `creator` is null on this endpoint because it is implied by the person you asked for.",
+    {
+      person_id: z.number().describe('Basecamp person ID — from list_people'),
+      since: z.string().optional().describe('ISO8601 timestamp — only events after this. Strongly recommended.'),
+      limit: z.number().optional().describe('Max events to return (default 50)'),
+      all_pages: z.boolean().optional().describe('Paginate the full range since `since` rather than the first page'),
+      raw: z.boolean().optional().describe('Return Basecamp\'s untouched payload instead of the normalized shape'),
+    },
+    async ({ person_id, since, limit = 50, all_pages = false, raw = false }) => {
+      try {
+        const query = since ? `?since=${encodeURIComponent(since)}` : '';
+        const data = all_pages
+          ? await client.getAllPages(`/people/${person_id}/events.json`, since ? { since } : {})
+          : await client.get(`/people/${person_id}/events.json${query}`);
+        const rows = Array.isArray(data) ? data : [];
+        return jsonResult((raw ? rows : rows.map(normalizeEvent)).slice(0, limit));
       } catch (e) {
         return errorResult(e);
       }

@@ -83,6 +83,8 @@ Set the environment variables in your shell or `.env` file before starting Claud
 | `upload_attachment` | Upload a file and get an attachment token + name |
 | `list_people` | List all people visible to you |
 | `get_project_accesses` | List people with access to a project |
+| `list_events` | Account-wide activity feed — who did what, when, in which project |
+| `list_person_events` | One person's activity — what they commented on, changed, completed or created |
 
 ## Troubleshooting
 
@@ -95,3 +97,37 @@ Set the environment variables in your shell or `.env` file before starting Claud
 **429 Too Many Requests** — The server automatically retries once after the Retry-After delay. If you still hit rate limits, slow down your requests.
 
 **Connection errors** — Confirm your `BASECAMP_ACCOUNT_ID` is correct and that you can access `https://basecamp.com/<id>` in a browser.
+
+## Activity feeds
+
+`list_events` and `list_person_events` wrap Basecamp 2's `events.json` endpoints. They exist for
+answering "what has this person been up to" without asking them — the per-person route is the one
+BC2 serves best.
+
+Both return a normalized row by default:
+
+```json
+{ "id": 2814733369,
+  "created_at": "2026-09-16T04:07:22.000-07:00",
+  "action": "commented on",
+  "summary": "commented on TIME QUOTE: CV2 - Envisia Learning - Adding results from another as...",
+  "target":  "TIME QUOTE: CV2 - Envisia Learning - Adding results from another as...",
+  "excerpt": "The import file would be around 5-6 hours The report scoring would be around 4 hours",
+  "creator": null,
+  "project": { "id": 17514231, "name": "@Time Quotes" },
+  "eventable": { "type": "Todo", "id": 519880692 },
+  "url": "https://basecamp.com/1757845/projects/17514231/todos/519880692#comment_978900828" }
+```
+
+Two things worth knowing:
+
+- **`action` and `summary` arrive with raw HTML.** A renamed to-do comes back as
+  ``changed a to-do from '<img alt="x" src="https://bcx-production-assets-cdn…'``. Both tools strip
+  tags and entities; `excerpt` prefers Basecamp's already-plain `raw_excerpt`. Pass `raw: true` for
+  the untouched payload.
+- **`creator` is `null` on `list_person_events`** — Basecamp omits it because the person is implied
+  by the path. Attribute from the `person_id` you asked for, never from this field. It IS populated
+  on `list_events`.
+
+Always pass `since` (ISO8601); without it you get only the most recent page. `all_pages: true`
+paginates the whole window, which can be slow over a long one.
